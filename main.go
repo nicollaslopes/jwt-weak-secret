@@ -21,7 +21,7 @@ var BrightCyan = "\x1b[96m"
 
 var verbosePtr *bool
 
-func validateSignature(tokenString string, secretKey []byte) bool {
+func validateSignature(tokenString string, secretKey []byte) (bool, string) {
 
 	token, _ := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -31,14 +31,13 @@ func validateSignature(tokenString string, secretKey []byte) bool {
 	})
 
 	if token.Valid {
-		fmt.Printf("%v\n[✔] Secret Key Found! %v %v %v %v\n", Green, EndColor, Yellow, string(secretKey), EndColor)
-		return true
+		return true, string(secretKey)
 	}
 
-	return false
+	return false, ""
 }
 
-func bruteForce(wordlistPath string, jwt string) {
+func bruteForce(wordlistPath string, jwt string) (string, float64) {
 
 	file, err := os.Open(wordlistPath)
 	if err != nil {
@@ -60,16 +59,18 @@ func bruteForce(wordlistPath string, jwt string) {
 			fmt.Printf("\r\033[K%vTesting: %v %s", Red, EndColor, word)
 		}
 
-		if validateSignature(jwt, []byte(scanner.Text())) {
+		isJwtValid, _ := validateSignature(jwt, []byte(scanner.Text()))
+		if isJwtValid {
 			duration := time.Since(start).Seconds()
-			fmt.Printf("Finished in %.2f seconds.\n\n", duration)
-			return
+			return string([]byte(scanner.Text())), duration
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
+
+	return "", 0.0
 }
 
 func main() {
@@ -83,5 +84,8 @@ func main() {
 	fmt.Println("Enter JWT Token: ")
 	fmt.Scanln(&jwtToken)
 
-	bruteForce(*pathToWordlist, jwtToken)
+	secretFound, duration := bruteForce(*pathToWordlist, jwtToken)
+	fmt.Printf("%v\n[✔] Secret Key Found! %v %v %v %v\n", Green, EndColor, Yellow, string(secretFound), EndColor)
+	fmt.Printf("Finished in %.2f seconds.\n\n", duration)
+
 }
